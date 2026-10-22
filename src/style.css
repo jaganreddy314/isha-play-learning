@@ -274,3 +274,38 @@ mark { background: #ffe066; border-radius: 6px; padding: 0 4px; }
   .portrait { width: 52px; height: 52px; font-size: 32px; }
   .totals { grid-template-columns: repeat(2, 1fr); }
 }
+
+/* ---------- Times Table Dojo ---------- */
+.btn.orange { --bg: #ff9f1c; --edge: #d9700a; color: #fff; }
+.topic small { color: var(--muted); font-size: 14px; }
+.topic.done { box-shadow: inset 0 0 0 3px var(--c); }
+.tip { color: var(--muted); font-size: 16px !important; }
+.belt-row { display: flex; gap: 14px; align-items: center; background: #f7f4ff; border-radius: 18px; padding: 10px 14px; text-align: left; }
+.belt { flex: none; width: 64px; height: 22px; border-radius: 6px; background: var(--c); position: relative; box-shadow: inset 0 0 0 2px rgba(0, 0, 0, 0.15); }
+.belt i { position: absolute; left: 50%; top: -6px; width: 18px; height: 34px; margin-left: -9px; border-radius: 5px; background: var(--c); box-shadow: inset 0 0 0 2px rgba(0, 0, 0, 0.2); }
+.dojo-extra { display: flex; flex-direction: column; gap: 8px; }
+
+.answers.pad { display: block; }
+.keypad { display: grid; gap: 8px; max-width: 360px; width: 100%; margin: 0 auto; }
+.kp-display {
+  font-size: 40px; font-weight: 700; text-align: center; letter-spacing: 0.08em; color: #3d2c5a;
+  background: #fff; border: 3px solid #e3dcff; border-radius: 16px; padding: 4px; min-height: 64px;
+}
+.kp-display.wobble { animation: wobble 0.3s; border-color: #ff8fa3; }
+.kp-keys { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.btn.kp { font-size: 26px; min-height: 54px; padding: 6px; }
+
+.factmap { display: grid; grid-template-columns: repeat(var(--n), 1fr); gap: 3px; user-select: none; }
+.fm-head { display: grid; place-items: center; font-weight: 700; color: var(--muted); font-size: clamp(11px, 2.6vw, 16px); }
+.fm-cell {
+  font: inherit; font-weight: 600; font-size: clamp(10px, 2.4vw, 15px); aspect-ratio: 1; border: 0; border-radius: 6px; padding: 0;
+  background: var(--c); color: #3d2c5a; cursor: pointer; transition: transform 0.4s, opacity 0.4s, filter 0.4s;
+}
+.fm-cell.star { color: #fff; }
+.fm-cell:hover { transform: scale(1.15); }
+.fm-cell.gone { opacity: 0.12; transform: scale(0.6); filter: grayscale(1); }
+.fm-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 14px; color: var(--muted); }
+.fm-legend i { display: inline-block; width: 14px; height: 14px; border-radius: 4px; background: var(--c); margin-right: 5px; vertical-align: -2px; }
+.fm-count { text-align: center; font-weight: 600; font-size: 19px !important; min-height: 1.4em; }
+.sprint-score { font-size: 84px; font-weight: 700; color: #ff8c1a; line-height: 1; }
+.btn.purple { --bg: #9b5de5; --edge: #6a3fb0; color: #fff; }

@@ -14,6 +14,7 @@ function fresh() {
     lessons: {},
     endings: [],
     journeys: 0,
+    dojo: null, // Times Table Dojo, created by tables.js
     story: newStory(),
   };
 }

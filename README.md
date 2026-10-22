@@ -39,6 +39,26 @@ Icons: edit `public/icons/icon.svg`, then run `npm run icons` (needs `rsvg-conve
 it down. A wrong first answer gives a hint and a visual clue; a second miss reveals the answer with an explanation. A
 perfect round in the story offers an optional timed **Super Challenge** for a golden star.
 
+**🥋 Times Table Dojo** goes beyond rote tables, using methods fast mental calculators rely on:
+
+- **Trick School:** one short animated lesson per table, each followed by 5 questions using that trick:
+  - ×2 doubles, ×4 double-double, ×8 triple-double
+  - ×3 double + one, ×6 five + one, ×7 five + two, ×12 ten + two (split arrays: the distributive law)
+  - ×5 half of ten
+  - ×9 finger magic, and ten minus one
+  - ×11 twin digits
+  - the Vedic cross for 6–9
+  - turnarounds
+- **Smart Practice:** 10 facts chosen by spaced repetition (Leitner boxes), with tables mixed together. You type the
+  answer on a keypad, because recalling an answer builds memory better than recognising it in a list. Fast, correct
+  answers move a fact up a box. A miss shows the picture of that fact's trick, and the fact comes back three
+  questions later.
+- **Speed Sprint:** 60 seconds against your own personal best, never against anyone else.
+- **Fact Map:** a 2–12 grid coloured by how well each fact is known.
+  - Tap a fact to see its trick.
+  - **The shrinking secret** removes the easy tables and turnarounds: 121 facts become just 21 to really learn.
+- Belts from white to black track how many of the 66 facts you have mastered.
+
 **Practice & Learn** lets you pick any topic directly. **Learn how** runs a short animated lesson with Hoot the owl.
 Story lessons are also offered the first time a topic comes up.
 
@@ -52,3 +72,4 @@ Story lessons are also offered the first time a topic comes up.
 - `src/main.js` — screens, dialogue, question runner, story/practice flow
 - `src/progress.js` — saved progress (localStorage) and adaptive levels
 - `src/lessons.js` — the "Learn how" lessons
+- `src/tables.js` — Times Table Dojo: a trick for every fact, spaced-repetition boxes, belts, trick lessons

@@ -6,8 +6,10 @@ import { TOPICS, makeQuestion, readingQuestions, checkAnswer } from './questions
 import { shuffle, pick } from './questions/util.js';
 import { STORY, ENDINGS, storyEdges } from './story.js';
 import { LESSONS } from './lessons.js';
+import { dojo, belt, fact, key, NUMS, ALL_FACTS, BOX_COLORS, BOX_NAMES, MASTERED, TRICKS, strategy, factQuestion, trickQuestions, sessionFacts, sprintFact, recordFact } from './tables.js';
 import { state, save, newStory, recordAnswer, resetAll, LEVEL_NAMES } from './progress.js';
 import { sfx, speak, stopSpeaking, unlockAudio, audioPrefs } from './sound.js';
+import { wait } from './tween.js';
 
 registerSW({ immediate: true });
 
@@ -38,7 +40,7 @@ const world = new World($('scene'));
 world.buildPaths(storyEdges());
 world.setShirt(state.player.shirt);
 world.setCrystals(state.story.crystals);
-if (import.meta.env.DEV) window.__quest = { world, state, practice: (t) => run(() => practice(t)), teach: (t) => run(() => teach(t)) };
+if (import.meta.env.DEV) window.__quest = { world, state, practice: (t) => run(() => practice(t)), teach: (t) => run(() => teach(t)), dojo: () => showDojo() };
 
 // ---------- flow control: every screen change aborts whatever was waiting ----------
 class Aborted extends Error {}
@@ -180,13 +182,52 @@ function choose(options, prompt) {
   });
 }
 
+// ---------- number keypad (typing the answer is stronger recall than picking one) ----------
+function keypad(onEnter) {
+  let val = '';
+  const display = h('div', { class: 'kp-display' }, '?');
+  const show = () => (display.textContent = val || '?');
+  const press = (k) => {
+    if (k === '✓') return val && onEnter(val);
+    if (k === '⌫') val = val.slice(0, -1);
+    else if (val.length < 3) val += k;
+    sfx.tap();
+    show();
+  };
+  const keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '⌫', '0', '✓'].map((k) =>
+    h('button', { class: `btn kp ${k === '✓' ? 'primary' : k === '⌫' ? 'soft' : ''}`, 'aria-label': k === '⌫' ? 'Delete' : k === '✓' ? 'Check' : k, onclick: () => press(k) }, k));
+  const onKey = (e) => {
+    if (!display.isConnected) return window.removeEventListener('keydown', onKey);
+    if (keys[0].disabled) return;
+    const k = /^[0-9]$/.test(e.key) ? e.key : e.key === 'Backspace' ? '⌫' : e.key === 'Enter' ? '✓' : null;
+    if (!k) return;
+    e.preventDefault();
+    press(k);
+  };
+  window.addEventListener('keydown', onKey);
+  return {
+    el: h('div', { class: 'keypad' }, display, h('div', { class: 'kp-keys' }, keys)),
+    clear() {
+      val = '';
+      show();
+      display.classList.remove('wobble');
+      void display.offsetWidth;
+      display.classList.add('wobble');
+    },
+    set(v) {
+      val = String(v);
+      show();
+    },
+  };
+}
+
 // ---------- asking one question ----------
 const PRAISE = ['Awesome!', 'Super star!', 'You got it!', 'Brilliant!', 'Fantastic!', 'Great thinking!', 'Nailed it!', 'Wonderful!'];
 const PRAISE2 = ['You worked it out!', 'Great fixing!', 'Got it on the second try!'];
 
 function ask(q, { index, total, timer = 0 }) {
   return waitUser((done) => {
-    let attempts = 0, finished = false;
+    let attempts = 0, finished = false, firstMs = 0, kp = null;
     const startedAt = performance.now();
     const meta = TOPICS[q.topic] || TOPICS.reading;
     const feedback = h('div', { class: 'feedback', hidden: true });
@@ -194,7 +235,7 @@ function ask(q, { index, total, timer = 0 }) {
     const actions = h('div', { class: 'actions' });
     let check;
 
-    const puzzle = createPuzzle(q, {
+    let puzzle = createPuzzle(q, {
       onChange: () => check && (check.disabled = puzzle.value() == null),
       onComplete: () => submit(puzzle.value()),
     });
@@ -203,7 +244,8 @@ function ask(q, { index, total, timer = 0 }) {
     const hear = () => speak(q.say || `${q.passage && q.topic !== 'reading' ? q.passage + '. ' : ''}${q.prompt}`);
     const finish = (r) => {
       finished = true;
-      const lvl = recordAnswer(q.topic, r.points === 2);
+      r.ms = firstMs;
+      const lvl = q.noLevel ? null : recordAnswer(q.topic, r.points === 2);
       if (lvl === 'up') toast(`⬆️ Level up! ${meta.name}: ${LEVEL_NAMES[state.skills[q.topic].level]}`);
       save();
       return r;
@@ -212,7 +254,7 @@ function ask(q, { index, total, timer = 0 }) {
     function submit(val, btn) {
       if (finished) return;
       if (val == null) return;
-      attempts++;
+      if (!attempts++) firstMs = performance.now() - startedAt;
       const ok = checkAnswer(q, val);
       if (ok) {
         const points = attempts === 1 ? 2 : 1;
@@ -238,14 +280,22 @@ function ask(q, { index, total, timer = 0 }) {
       btn?.classList.add('wrong');
       if (btn) btn.disabled = true;
       feedback.hidden = false;
+      kp?.clear();
       if (attempts === 1) {
         feedback.className = 'feedback hint';
         feedback.innerHTML = `Not quite — try again! 💡 ${esc(q.hint)}`;
         speak(`Not quite. ${q.hint}`);
-        puzzle.hint();
+        if (q.hintVisual) {
+          // swap the plain question card for the picture of the trick
+          puzzle = createPuzzle({ ...q, kind: 'demo', visual: q.hintVisual }, {});
+          world.setPuzzle(puzzle);
+          const p = puzzle;
+          setTimeout(() => p.group.parent && p.hint(), 700);
+        } else puzzle.hint();
         return;
       }
       const r = finish({ points: 0, lightning: false });
+      kp?.set(q.answer);
       puzzle.reveal();
       answers.querySelectorAll('button').forEach((b) => {
         b.disabled = true;
@@ -257,7 +307,11 @@ function ask(q, { index, total, timer = 0 }) {
       actions.replaceChildren(h('button', { class: 'btn primary', onclick: () => (sfx.tap(), done(r)) }, 'Next ▶'));
     }
 
-    if (q.kind === 'choice') {
+    if (q.kind === 'number') {
+      kp = keypad((v) => submit(v));
+      answers.className = 'answers pad';
+      answers.append(kp.el);
+    } else if (q.kind === 'choice') {
       for (const c of q.choices) answers.append(h('button', { class: 'btn answer', 'data-v': c, onclick: (e) => submit(c, e.currentTarget) }, c));
     } else {
       check = h('button', { class: 'btn primary', disabled: puzzle.value() == null, onclick: () => submit(puzzle.value()) }, 'Check ✓');
@@ -321,7 +375,13 @@ function summary({ results, ratio, lightning }, { title, extra, button = 'Contin
 
 // ---------- lessons ----------
 async function teach(topic) {
-  for (const step of LESSONS[topic]) {
+  await lesson(topic, LESSONS[topic]);
+  state.lessons[topic] = true;
+  save();
+}
+
+async function lesson(topic, steps) {
+  for (const step of steps) {
     const puzzle = createPuzzle({ kind: 'demo', topic, visual: step.visual, answerText: '' }, {});
     world.setPuzzle(puzzle);
     if (step.after) setTimeout(() => puzzle.group.parent && puzzle[step.after](), 900);
@@ -329,8 +389,6 @@ async function teach(topic) {
     if (step.speak) speak(step.speak);
   }
   world.clearPuzzle();
-  state.lessons[topic] = true;
-  save();
 }
 
 // ---------- story ----------
@@ -507,6 +565,7 @@ function showTitle() {
       h('button', { class: 'btn primary big', onclick: () => { unlockAudio(); run(playStory); } }, inProgress ? '▶ Continue Adventure' : '▶ Start Adventure'),
       inProgress ? h('button', { class: 'btn soft', onclick: () => { state.story = newStory(); world.resetCrystals(); save(); run(playStory); } }, '✨ Start a new adventure') : null,
       h('button', { class: 'btn blue big', onclick: () => (unlockAudio(), showPractice()) }, '🎯 Practice & Learn'),
+      h('button', { class: 'btn purple big', onclick: () => (unlockAudio(), showDojo()) }, '🥋 Times Table Dojo'),
       h('button', { class: 'btn green big', onclick: showProgress }, '🏆 My Stars'),
     ),
     h('div', { class: 'row-links' },
@@ -562,7 +621,8 @@ function showPractice() {
   screen(h('div', { class: 'card wide pop' },
     h('div', { class: 'card-head' }, h('button', { class: 'round-btn', onclick: showTitle, 'aria-label': 'Back' }, '←'), h('h2', {}, '🎯 Practice & Learn')),
     h('h3', {}, '🔢 Maths'),
-    h('div', { class: 'topics' }, ['mult', 'div', 'clock', 'line'].map(card)),
+    h('div', { class: 'topics' }, ['mult', 'div', 'clock', 'line'].map(card),
+      h('button', { class: 'topic', style: '--c:#ff9f1c', onclick: showDojo }, h('span', { class: 'emoji' }, '🥋'), h('span', { class: 'name' }, 'Times Table Dojo'), h('small', {}, 'tricks & speed'))),
     h('h3', {}, '📚 English'),
     h('div', { class: 'topics' }, ['spell', 'grammar', 'vocab', 'sentences'].map(card)),
   ));
@@ -619,11 +679,271 @@ function showProgress() {
       h('div', {}, h('b', {}, state.golden), h('span', {}, '🌟 golden')),
       h('div', {}, h('b', {}, `${state.endings.length}/3`), h('span', {}, '📜 endings')),
       h('div', {}, h('b', {}, state.journeys), h('span', {}, '🗺️ journeys')),
+      h('div', {}, h('b', {}, `${belt().mastered}/${ALL_FACTS.length}`), h('span', {}, `🥋 ${belt().name}`)),
     ),
     h('div', { class: 'endings' }, Object.entries(ENDINGS).map(([k, e]) => h('span', { class: state.endings.includes(k) ? 'on' : '' }, state.endings.includes(k) ? `${e.emoji} ${e.title}` : '❔ ???'))),
     h('div', { class: 'skills' }, rows),
     confirmReset,
   ));
+}
+
+// ---------- Times Table Dojo ----------
+function beltBadge() {
+  const b = belt();
+  const pct = b.next ? Math.round(((b.mastered - b.at) / (b.next.at - b.at)) * 100) : 100;
+  return h('div', { class: 'belt-row' },
+    h('div', { class: 'belt', style: `--c:${b.color}` }, h('i')),
+    h('div', { class: 'skill-main' },
+      h('div', { class: 'skill-top' }, h('b', {}, b.name), h('span', {}, `${b.mastered} / ${ALL_FACTS.length} facts mastered`)),
+      h('div', { class: 'bar' }, h('i', { style: `width:${pct}%;--c:${b.next?.color || b.color}` })),
+      h('small', {}, b.next ? `${b.next.at - b.mastered} more for ${b.next.name}` : 'You know every fact. Grand master!'),
+    ),
+  );
+}
+
+function dojoTile(emoji, name, sub, onclick, color) {
+  return h('button', { class: 'topic', style: `--c:${color}`, onclick }, h('span', { class: 'emoji' }, emoji), h('span', { class: 'name' }, name), h('small', {}, sub));
+}
+
+function showDojo() {
+  const d = dojo();
+  screen(h('div', { class: 'card wide pop' },
+    h('div', { class: 'card-head' }, h('button', { class: 'round-btn', onclick: showTitle, 'aria-label': 'Back' }, '←'), h('h2', {}, '🥋 Times Table Dojo')),
+    beltBadge(),
+    h('div', { class: 'topics' },
+      dojoTile('🧠', 'Smart Practice', '10 facts picked for you', () => run(smartPractice), '#ff6b6b'),
+      dojoTile('🪄', 'Trick School', 'learn the fast tricks', showTricks, '#9b5de5'),
+      dojoTile('⚡', 'Speed Sprint', d.best ? `60 seconds · best ${d.best}` : '60 seconds', () => run(sprint), '#ff9f1c'),
+      dojoTile('🗺️', 'Fact Map', 'see what you know', showFactMap, '#00a6fb'),
+    ),
+    h('p', { class: 'tip' }, '💡 Fast mathematicians don\'t memorise 144 facts — they learn a few tricks and practise a little every day. 10 minutes a day beats an hour once a week!'),
+  ));
+}
+
+function showTricks() {
+  const d = dojo();
+  screen(h('div', { class: 'card wide pop' },
+    h('div', { class: 'card-head' }, h('button', { class: 'round-btn', onclick: showDojo, 'aria-label': 'Back' }, '←'), h('h2', {}, '🪄 Trick School')),
+    h('p', {}, 'Each trick turns a hard fact into easy ones. Watch Hoot, then try 5 questions.'),
+    h('div', { class: 'topics' }, TRICKS.map((t) => h('button', { class: `topic ${d.tricks[t.id] ? 'done' : ''}`, style: '--c:#9b5de5', onclick: () => run(() => trickLesson(t)) },
+      h('span', { class: 'emoji' }, t.emoji), h('span', { class: 'name' }, t.name), d.tricks[t.id] ? h('small', {}, '✓ learned') : null))),
+  ));
+}
+
+async function trickLesson(t) {
+  setHud(`🪄 ${t.name}`);
+  world.placeParty('market');
+  await guard(world.flyTo('market', 1.4));
+  await lesson('mult', t.steps);
+  dojo().tricks[t.id] = true;
+  save();
+  const c = await choose([{ text: '🎯 Try the trick — 5 questions', v: true }, { text: '← Back to Trick School', v: false }], `Ready to use the <b>${t.name}</b> trick?`);
+  if (!c.v) return showTricks();
+  const qs = trickQuestions(t);
+  const res = await runRound(qs, { title: `🪄 ${t.name}` });
+  res.results.forEach((r, i) => recordFact(...qs[i].fact, r.points === 2, r.ms));
+  await summary(res, { title: `🪄 ${t.name}`, button: 'Back to Trick School' });
+  showTricks();
+}
+
+async function smartPractice() {
+  const d = dojo();
+  setHud('🧠 Smart Practice');
+  world.placeParty('market');
+  await guard(world.flyTo('market', 1.4));
+  const before = Object.fromEntries(ALL_FACTS.map(([a, b]) => [key(a, b), fact(a, b).box]));
+  const queue = sessionFacts(10).map(([a, b]) => factQuestion(a, b));
+  const results = [];
+  for (let i = 0; i < queue.length; i++) {
+    setDots(results, queue.length);
+    const q = queue[i];
+    const r = await ask(q, { index: i, total: queue.length });
+    results.push(r);
+    const [a, b] = q.fact;
+    recordFact(a, b, r.points === 2, r.ms);
+    // a missed fact comes back a little later in the same session (retrieval after a short gap)
+    if (r.points < 2 && !q.again) queue.splice(Math.min(queue.length, i + 3), 0, factQuestion(b, a, { again: true, prompt: `<b class="eq">${b} × ${a} = ?</b><small>Again — use the trick!</small>` }));
+  }
+  setDots(results, queue.length);
+  world.clearPuzzle();
+  setDock(null);
+  d.sessions++;
+  save();
+  const up = ALL_FACTS.filter(([a, b]) => fact(a, b).box > before[key(a, b)]);
+  const newlyMastered = up.filter(([a, b]) => fact(a, b).box >= MASTERED && before[key(a, b)] < MASTERED);
+  const points = results.reduce((a, r) => a + r.points, 0);
+  await summary({ results, ratio: points / (results.length * 2), lightning: 0 }, {
+    title: '🧠 Smart Practice',
+    extra: h('div', { class: 'dojo-extra' },
+      h('p', {}, `⬆️ ${up.length} fact${up.length === 1 ? '' : 's'} got stronger`),
+      newlyMastered.length ? h('p', {}, `🏅 Mastered: ${newlyMastered.map(([a, b]) => `${a}×${b}`).join(', ')}`) : null,
+      beltBadge(),
+    ),
+    button: 'Back to the Dojo',
+  });
+  showDojo();
+}
+
+async function sprint() {
+  const d = dojo();
+  setHud('⚡ Speed Sprint');
+  world.placeParty('market');
+  await guard(world.flyTo('market', 1.4));
+  await say([['hoot', d.best ? `60 seconds! Your best is ${d.best}. Can you beat yourself?` : '60 seconds! Answer as many as you can. Type the answer and press ✓.']]);
+  for (const n of ['3', '2', '1', 'Go!']) {
+    world.setPuzzle(createPuzzle({ kind: 'demo', visual: { type: 'card', text: n, color: '#ff9f1c' } }, {}));
+    sfx.tick();
+    await guard(wait(0.75));
+  }
+  const LEN = 60000, end = performance.now() + LEN;
+  let score = 0, prev = null;
+  const missed = [];
+  while (performance.now() < end) {
+    const f = (prev = sprintFact(prev));
+    const [a, b] = Math.random() < 0.5 ? f : [f[1], f[0]];
+    world.setPuzzle(createPuzzle({ kind: 'demo', visual: { type: 'card', text: `${a} × ${b}`, emoji: '⚡', color: '#ff9f1c' } }, {}));
+    const ok = await waitUser((done) => {
+      const left = end - performance.now();
+      const timeout = setTimeout(() => done(null), left);
+      const kp = keypad((v) => {
+        clearTimeout(timeout);
+        done(v === String(a * b));
+      });
+      setDock(h('div', { class: 'panel q' },
+        h('div', { class: 'q-head' },
+          h('span', { class: 'chip', style: '--c:#ff9f1c' }, `⚡ ${score} correct`),
+          h('span', { class: 'q-count' }, d.best ? `best ${d.best}` : ''),
+        ),
+        h('div', { class: 'timer' }, h('i', { style: `animation-duration:${LEN / 1000}s;animation-delay:-${(LEN - left) / 1000}s` })),
+        h('p', { class: 'prompt' }, h('b', { class: 'eq' }, `${a} × ${b} = ?`)),
+        h('div', { class: 'answers pad' }, kp.el),
+      ));
+    });
+    if (ok === null) break;
+    if (ok) {
+      score++;
+      sfx.correct();
+      world.burst(30);
+    } else {
+      sfx.wrong();
+      world.shake();
+      toast(`${a} × ${b} = ${a * b}`, 1400);
+      missed.push([a, b]);
+      recordFact(a, b, false, 0);
+    }
+  }
+  world.clearPuzzle();
+  setDock(null);
+  const isBest = score > d.best;
+  if (isBest) d.best = score;
+  d.sprints++;
+  state.stars += Math.floor(score / 5);
+  $('starCount').textContent = state.stars;
+  save();
+  if (isBest) sfx.fanfare();
+  const msg = isBest ? `New record: ${score}! Your brain got faster!` : `${score} correct! Keep going — speed grows with practice.`;
+  speak(msg);
+  const again = await waitUser((done) => {
+    overlay.replaceChildren(h('div', { class: 'modal' }, h('div', { class: 'card summary pop' },
+      h('h2', {}, '⚡ Speed Sprint'),
+      h('div', { class: 'sprint-score' }, score),
+      h('p', { class: 'big' }, msg),
+      h('p', {}, `🏆 Personal best: ${d.best}${score >= 5 ? ` · ⭐ +${Math.floor(score / 5)}` : ''}`),
+      missed.length ? h('p', {}, `Practise these: ${[...new Set(missed.map(([a, b]) => `${a} × ${b} = ${a * b}`))].join(' · ')}`) : null,
+      h('div', { class: 'menu' },
+        h('button', { class: 'btn primary big', onclick: () => done(true) }, '🔁 Sprint again'),
+        h('button', { class: 'btn soft', onclick: () => done(false) }, 'Back to the Dojo'),
+      ),
+    )));
+  });
+  overlay.replaceChildren();
+  if (again) run(sprint);
+  else showDojo();
+}
+
+// Why tables are smaller than they look: knock out the easy tables and the turnarounds.
+const SHRINK = [
+  [(a, b) => a === 10 || b === 10, '× 10: just add a zero!'],
+  [(a, b) => a === 2 || b === 2, '× 2: doubles!'],
+  [(a, b) => a === 5 || b === 5, '× 5: half of ten!'],
+  [(a, b) => a === 11 || b === 11, '× 11: twin digits!'],
+  [(a, b) => a > b, 'Turnarounds: 7 × 3 is the same as 3 × 7!'],
+  [(a, b) => a === 9 || b === 9, '× 9: finger magic!'],
+];
+
+function showFactMap() {
+  const cells = [];
+  const grid = h('div', { class: 'factmap', style: `--n:${NUMS.length + 1}` },
+    h('span', { class: 'fm-head' }, '×'),
+    NUMS.map((n) => h('span', { class: 'fm-head' }, n)),
+    NUMS.flatMap((a) => [
+      h('span', { class: 'fm-head' }, a),
+      NUMS.map((b) => {
+        const box = fact(a, b).box;
+        const c = h('button', { class: `fm-cell ${box >= MASTERED ? 'star' : ''}`, style: `--c:${BOX_COLORS[box]}`, title: `${a} × ${b} = ${a * b} · ${BOX_NAMES[box]}`, onclick: () => factInfo(a, b) }, a * b);
+        cells.push({ a, b, c });
+        return c;
+      }),
+    ].flat()),
+  );
+  const counter = h('p', { class: 'fm-count' }, `${cells.length} facts on the map`);
+  const shrinkBtn = h('button', { class: 'btn orange', onclick: async () => {
+    shrinkBtn.disabled = true;
+    let left = cells.length;
+    for (const [test, text] of SHRINK) {
+      if (!grid.isConnected) return;
+      for (const x of cells) {
+        if (!x.c.classList.contains('gone') && test(x.a, x.b)) {
+          x.c.classList.add('gone');
+          left--;
+        }
+      }
+      counter.textContent = `${text} → ${left} left`;
+      speak(text);
+      sfx.pop();
+      await new Promise((r) => setTimeout(r, 2400));
+    }
+    if (!grid.isConnected) return;
+    counter.textContent = `Only ${left} facts to really learn — and each one has a trick! 💪`;
+    speak(counter.textContent);
+    sfx.fanfare();
+    shrinkBtn.textContent = '↺ Show all facts';
+    shrinkBtn.disabled = false;
+    shrinkBtn.onclick = showFactMap;
+  } }, '✨ The shrinking secret');
+  screen(h('div', { class: 'card wide pop' },
+    h('div', { class: 'card-head' }, h('button', { class: 'round-btn', onclick: showDojo, 'aria-label': 'Back' }, '←'), h('h2', {}, '🗺️ Fact Map')),
+    beltBadge(),
+    grid,
+    h('div', { class: 'fm-legend' }, BOX_NAMES.map((n, i) => h('span', {}, h('i', { style: `--c:${BOX_COLORS[i]}` }), n))),
+    counter,
+    h('div', { class: 'actions' }, shrinkBtn),
+    h('p', { class: 'tip' }, 'Tap any fact to see its trick.'),
+  ));
+}
+
+function factInfo(a, b) {
+  const s = strategy(a, b);
+  const f = fact(a, b);
+  overlay.append(h('div', { class: 'modal', onclick: (e) => e.target === e.currentTarget && e.currentTarget.remove() }, h('div', { class: 'card pop' },
+    h('h2', { class: 'eq' }, `${a} × ${b} = ${a * b}`),
+    h('p', {}, h('span', { class: 'chip', style: `--c:${BOX_COLORS[f.box] === BOX_COLORS[0] ? '#9b5de5' : BOX_COLORS[f.box]}` }, BOX_NAMES[f.box])),
+    h('p', { class: 'big' }, `🪄 ${s.name}`),
+    h('p', {}, s.text),
+    h('div', { class: 'menu' },
+      h('button', { class: 'btn primary big', onclick: () => run(async () => {
+        setHud(`${a} × ${b}`);
+        const p = createPuzzle({ kind: 'demo', visual: s.visual, answerText: '' }, {});
+        world.setPuzzle(p);
+        setTimeout(() => p.group.parent && p.hint(), 900);
+        await say([['hoot', `${a} × ${b}: the ${s.name} trick! ${s.text}`]]);
+        p.reveal();
+        await say([['hoot', `${a} × ${b} = ${a * b}. And ${b} × ${a} is the same!`]]);
+        world.clearPuzzle();
+        showFactMap();
+      }) }, '👀 Show me'),
+    ),
+  )));
 }
 
 $('homeBtn').onclick = () => {
