@@ -578,6 +578,7 @@ function showTitle() {
 
 function toggleVoice() {
   state.settings.voice = audioPrefs.voice = !state.settings.voice;
+  soundIcon();
   save();
   showTitle();
 }
@@ -950,11 +951,21 @@ $('homeBtn').onclick = () => {
   sfx.tap();
   showTitle();
 };
+// The HUD button mutes or unmutes everything: sound effects and read-aloud together.
+const soundIcon = () => ($('soundBtn').textContent = state.settings.sound && state.settings.voice ? '🔊' : '🔇');
 $('soundBtn').onclick = () => {
-  state.settings.sound = audioPrefs.sound = !state.settings.sound;
-  $('soundBtn').textContent = state.settings.sound ? '🔊' : '🔇';
+  const on = !(state.settings.sound && state.settings.voice);
+  state.settings.sound = audioPrefs.sound = on;
+  state.settings.voice = audioPrefs.voice = on;
+  if (!on) stopSpeaking();
+  soundIcon();
   save();
+  if (on) {
+    unlockAudio();
+    sfx.tap();
+    speak('Sound on!');
+  }
 };
-$('soundBtn').textContent = state.settings.sound ? '🔊' : '🔇';
+soundIcon();
 
 document.fonts?.load('600 64px Fredoka').finally(() => showTitle());
