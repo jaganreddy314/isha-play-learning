@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+    <title>Isha's Star Quest</title>
+    <meta name="description" content="A 3D story adventure for learning Grade 3 maths and English." />
+    <meta name="theme-color" content="#5b8def" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Star Quest" />
+    <link rel="icon" href="%BASE_URL%icons/icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="%BASE_URL%icons/apple-touch-icon.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  </head>
+  <body>
+    <canvas id="scene" aria-label="Lumina Island in 3D"></canvas>
+
+    <header id="hud" class="hud" hidden>
+      <button id="homeBtn" class="round-btn" aria-label="Home">🏠</button>
+      <div class="hud-mid">
+        <div id="hudTitle" class="hud-title"></div>
+        <div id="dots" class="dots"></div>
+      </div>
+      <div class="pill"><span>⭐</span><b id="starCount">0</b></div>
+      <button id="soundBtn" class="round-btn" aria-label="Sound on or off">🔊</button>
+    </header>
+
+    <div id="dock" class="dock" hidden></div>
+    <div id="overlay"></div>
+    <div id="toast" class="toast" hidden></div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

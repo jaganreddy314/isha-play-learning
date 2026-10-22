@@ -1,0 +1,20 @@
+{
+  "name": "isha-star-quest",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host",
+    "build": "vite build",
+    "preview": "vite preview --host",
+    "icons": "node scripts/icons.mjs",
+    "check": "node scripts/check-questions.mjs"
+  },
+  "dependencies": {
+    "three": "^0.170.0"
+  },
+  "devDependencies": {
+    "vite": "^6.4.5",
+    "vite-plugin-pwa": "^0.21.1"
+  }
+}
